@@ -46,6 +46,7 @@ contract HyperFrogs is ERC721A, AccessControl, ReentrancyGuard {
     /// Mint Rules
     uint public maxMintPerTrans = 5;
     uint public maxMintPerWallet = 5;
+    uint public maxMintOnWhitelist = 2;
 
     /// One-of-one settings
     uint public constant maxOneOfOne = 2;
@@ -124,20 +125,24 @@ contract HyperFrogs is ERC721A, AccessControl, ReentrancyGuard {
     // Standard minting function using custom errors.
     function mint(uint256 quantity) external payable {
         if (!mintEnabled) revert MintNotActive();
-
-        // During the whitelist phase, only addresses in paidWhitelist can mint.
-        // Assume that if whitelistEndTime is set (non-zero) and current time is before it, the paid whitelist applies.
-        if (whitelistEndTime != 0 && block.timestamp < whitelistEndTime) {
-            if (!whitelist[msg.sender]) revert NotOnWhitelist();
-        }
-        
         if (quantity > maxMintPerTrans) revert ExceedsMaxPerTx();
-        if (msg.value != quantity * mintPrice) revert IncorrectEthSent();
 
+        // Calculate the total mints by this wallet
         uint256 totalMintedByWallet = mintAmount[msg.sender] + quantity;
-        if (totalMintedByWallet > maxMintPerWallet) revert WalletLimitReached();
 
+        if (block.timestamp < whitelistEndTime) {
+            // Only whitelisted addresses can mint during this phase
+            if (!whitelist[msg.sender]) revert NotOnWhitelist();
+            if (totalMintedByWallet > maxMintOnWhitelist) revert ExceedsMaxPerTx();
+        } else {
+            // Public minting phase
+            if (totalMintedByWallet > maxMintPerWallet) revert ExceedsMaxPerTx();
+        }
+
+        if (msg.value != quantity * mintPrice) revert IncorrectEthSent();
         mintAmount[msg.sender] = totalMintedByWallet;
+
+        // Proceed with minting
         _internalMint(quantity);
     }
 
@@ -406,5 +411,13 @@ contract HyperFrogs is ERC721A, AccessControl, ReentrancyGuard {
 
     function setMintPrice(uint _newPrice) external onlyRole(DEFAULT_ADMIN_ROLE) {
         mintPrice = _newPrice;
+    }
+
+    function setmaxMintOnWhitelist(uint _max) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        maxMintOnWhitelist = _max;
+    }
+
+    function setMaxMintPerWallet(uint _max) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        maxMintPerWallet = _max;
     }
 }

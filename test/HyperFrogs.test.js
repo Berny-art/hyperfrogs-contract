@@ -82,6 +82,7 @@ describe("HyperFrogs Contract", () => {
     expect(await hyperFrogs.mintPrice()).to.equal(ethers.parseEther("1.0"));
     expect(await hyperFrogs.maxMintPerTrans()).to.equal(5);
     expect(await hyperFrogs.maxMintPerWallet()).to.equal(5);
+    expect(await hyperFrogs.maxMintOnWhitelist()).to.equal(2);
     expect(await hyperFrogs.maxOneOfOne()).to.equal(2);
     expect(await hyperFrogs.mintedOneOfOne()).to.equal(0);
   });
@@ -132,11 +133,11 @@ describe("HyperFrogs Contract", () => {
     expect(await hyperFrogs.totalSupply()).to.equal(1);
   });
 
-  it("Should allow whitelisted addresses to mint during whitelist phase and block non-whitelisted addresses", async () => {
+  it("Should enforce whitelist minting rules, mint limits, and public mint access", async () => {
     const [deployer, addr1, addr2] = await ethers.getSigners();
+    const sixHours = 6 * 60 * 60; // 6 hours in seconds
   
-    // Set the whitelist duration to 6 hours (21600 seconds)
-    const sixHours = 6 * 60 * 60;
+    // Set whitelist duration to 6 hours
     await hyperFrogs.setWhitelistDuration(sixHours);
   
     // Add addr1 to the whitelist
@@ -145,31 +146,56 @@ describe("HyperFrogs Contract", () => {
     // Enable minting
     await hyperFrogs.toggleMinting();
   
-    // addr1 should be able to mint during the whitelist phase
+    // ========== WHITELIST PHASE ==========
+    // ✅ addr1 should be able to mint during whitelist phase (up to 2 mints)
     await expect(
       hyperFrogs.connect(addr1).mint(1, { value: ethers.parseEther("1.0") })
     ).to.not.be.reverted;
   
-    expect(await hyperFrogs.totalSupply()).to.equal(1);
+    await expect(
+      hyperFrogs.connect(addr1).mint(1, { value: ethers.parseEther("1.0") })
+    ).to.not.be.reverted;
   
-    // addr2 (not on whitelist) should NOT be able to mint during whitelist phase
+    // ❌ Third mint during whitelist should fail (exceeds limit)
+    await expect(
+      hyperFrogs.connect(addr1).mint(1, { value: ethers.parseEther("1.0") })
+    ).to.be.revertedWithCustomError(hyperFrogs, "ExceedsMaxPerTx");
+  
+    // ✅ addr2 (not whitelisted) should NOT be able to mint during whitelist
     await expect(
       hyperFrogs.connect(addr2).mint(1, { value: ethers.parseEther("1.0") })
     ).to.be.revertedWithCustomError(hyperFrogs, "NotOnWhitelist");
   
-    // Fast-forward time to after the whitelist phase ends
+    expect(await hyperFrogs.totalSupply()).to.equal(2); // Only addr1 minted 2
+  
+    // ========== FAST FORWARD TO PUBLIC MINT ==========
     await ethers.provider.send("evm_increaseTime", [sixHours + 1]);
     await ethers.provider.send("evm_mine");
   
-    // Now addr2 (non-whitelisted) should be able to mint in the public phase
+    // ✅ addr2 can now mint in public phase (up to 5 mints)
     await expect(
-      hyperFrogs.connect(addr2).mint(1, { value: ethers.parseEther("1.0") })
+      hyperFrogs.connect(addr2).mint(5, { value: ethers.parseEther("5.0") })
     ).to.not.be.reverted;
   
-    expect(await hyperFrogs.totalSupply()).to.equal(2);
-  });
+    // ❌ addr2 cannot mint more than 5 in public phase
+    await expect(
+      hyperFrogs.connect(addr2).mint(1, { value: ethers.parseEther("1.0") })
+    ).to.be.revertedWithCustomError(hyperFrogs, "ExceedsMaxPerTx");
   
-
+    // ✅ addr1 can still mint in public phase (up to 5 total, including previous mints)
+    await expect(
+      hyperFrogs.connect(addr1).mint(3, { value: ethers.parseEther("3.0") })
+    ).to.not.be.reverted;
+  
+    // ❌ addr1 cannot mint more than 5 total in public phase
+    await expect(
+      hyperFrogs.connect(addr1).mint(1, { value: ethers.parseEther("1.0") })
+    ).to.be.revertedWithCustomError(hyperFrogs, "ExceedsMaxPerTx");
+  
+    // ✅ Verify total supply is correct
+    expect(await hyperFrogs.totalSupply()).to.equal(10); // 2 (addr1 in whitelist) + 5 (addr2) + 3 (addr1 in public)
+  });  
+  
   it("Should revert free mint if caller is not whitelisted", async () => {
     await hyperFrogs.toggleFreeMinting();
     await expect(hyperFrogs.connect(addr1).free_mint()).to.be.revertedWithCustomError(hyperFrogs, "NotOnWhitelist")
