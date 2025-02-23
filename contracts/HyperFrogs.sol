@@ -15,6 +15,7 @@ import "./traits/FrogsEyesB.sol";
 import "./traits/FrogsMouth.sol";
 import "./traits/FrogsFeet.sol";
 import "./traits/FrogsBackdrop.sol";
+import "./traits/FrogsOneOfOne.sol";
 
 contract HyperFrogs is ERC721A, AccessControl, ReentrancyGuard {
     using Strings for uint256;
@@ -36,15 +37,20 @@ contract HyperFrogs is ERC721A, AccessControl, ReentrancyGuard {
 
     /// Mint Settings
     uint public constant maxSupply = 2222;
-    uint public mintPrice = 1 ether; // Adjust if needed (originally 1.0000 ether)
-    uint public maxFree = 281;
+    uint public mintPrice = 1 ether; // is 1 HYPE
+    uint public maxFree = 200;
     uint public freeCount = 0;
     bool public mintEnabled = false;
     bool public freeMintEnabled = false;
 
     /// Mint Rules
     uint public maxMintPerTrans = 5;
-    uint public maxMintPerWallet = 10;
+    uint public maxMintPerWallet = 5;
+
+    /// One-of-one settings
+    uint public constant maxOneOfOne = 2;
+    uint public mintedOneOfOne = 0;
+    uint public oneOfOneProbability = 10;
 
     /// Whitelist Settings
     mapping(address => uint) public mintAmount;
@@ -52,6 +58,8 @@ contract HyperFrogs is ERC721A, AccessControl, ReentrancyGuard {
 
     /// Trait structure (note: eyes now uses a combined selection from EyesA and EyesB)
     struct TraitStruct {
+        bool oneOfOne;
+        uint oneOfOneIndex;
         uint backdrop;
         uint hat;
         uint eyesIndex; // The chosen index from the eyes contract
@@ -71,6 +79,7 @@ contract HyperFrogs is ERC721A, AccessControl, ReentrancyGuard {
     FrogsMouth public immutable frogsMouth;
     FrogsFeet public immutable frogsFeet;
     FrogsBackdrop public immutable frogsBackdrop;
+    FrogsOneOfOne public immutable frogsOneOfOne;
 
     constructor(
         address _body,
@@ -79,7 +88,8 @@ contract HyperFrogs is ERC721A, AccessControl, ReentrancyGuard {
         address _eyesB,
         address _mouth,
         address _feet,
-        address _backdrop
+        address _backdrop,
+        address _oneOfOne
     ) ERC721A("HyperFrogs", "HYF") {
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _grantRole(CONTROLLER_ROLE, msg.sender);
@@ -90,6 +100,7 @@ contract HyperFrogs is ERC721A, AccessControl, ReentrancyGuard {
         frogsMouth = FrogsMouth(_mouth);
         frogsFeet = FrogsFeet(_feet);
         frogsBackdrop = FrogsBackdrop(_backdrop);
+        frogsOneOfOne = FrogsOneOfOne(_oneOfOne);
     }
 
     function supportsInterface(bytes4 interfaceId) public view virtual override(ERC721A, AccessControl) returns (bool) {
@@ -99,6 +110,14 @@ contract HyperFrogs is ERC721A, AccessControl, ReentrancyGuard {
     // Override to start token IDs at 1.
     function _startTokenId() internal pure override returns (uint256) {
         return 1;
+    }
+
+    function shouldMintOneOfOne(uint256 randomValue) internal view returns (bool) {
+        uint256 totalMinted = _totalMinted();
+        uint256 remainingSupply = maxSupply - totalMinted;
+        uint256 availableOneOfOne = maxOneOfOne - mintedOneOfOne;
+        // Probability: availableOneOfOne/remainingSupply.
+        return (availableOneOfOne > 0 && (randomValue % remainingSupply) < availableOneOfOne);
     }
 
     // Standard minting function using custom errors.
@@ -125,11 +144,28 @@ contract HyperFrogs is ERC721A, AccessControl, ReentrancyGuard {
     }
 
     /// Generates traits for a given token.
-    /// Eyes trait is selected by first generating a random number [1, 100].
-    /// If the random value is ≤ 43, an EyesA trait is chosen; otherwise an EyesB trait is picked.
-    function _generateTraits(uint256 tokenId, bytes32 blockHash) internal view returns (TraitStruct memory) {
+    function _generateTraits(uint256 tokenId, bytes32 blockHash) internal returns (TraitStruct memory) {
         uint[5] memory randomSeeds = _randomSeed(blockHash, tokenId);
-        uint backdropTrait = 0; // fixed backdrop;
+         uint backdropTrait = 0;
+
+        // Decide if the token is a one-of-one
+        if (shouldMintOneOfOne(randomSeeds[0])) {
+            mintedOneOfOne++;
+            uint oneOfOneIndex = randomSeeds[1] % frogsOneOfOne.totalOneOfOne();
+            return TraitStruct({
+                oneOfOne: true,
+                oneOfOneIndex: oneOfOneIndex,
+                backdrop: backdropTrait,
+                hat: 0,
+                eyesIndex: 0,
+                eyesIsA: true,
+                mouth: 0,
+                body: 0,
+                feet: 0
+            });
+        }
+
+        // Generate normal traits
         uint hatTrait = _pickTraitCumulative(randomSeeds[0], frogsHats.getHatsProbability(), 0);
         uint mouthTrait = _pickTraitCumulative(randomSeeds[1], frogsMouth.getMouthProbability(), 0);
         uint bodyTrait = _pickTraitCumulative(randomSeeds[2], frogsBody.getBodyProbability(), 0);
@@ -150,6 +186,8 @@ contract HyperFrogs is ERC721A, AccessControl, ReentrancyGuard {
         }
 
         return TraitStruct({
+            oneOfOne: false,
+            oneOfOneIndex: 0,
             backdrop: backdropTrait,
             hat: hatTrait,
             eyesIndex: eyesIndex,
@@ -213,6 +251,30 @@ contract HyperFrogs is ERC721A, AccessControl, ReentrancyGuard {
     function buildSVG(uint tokenId) public view returns (string memory) {
         require(_exists(tokenId), "Token does not exist");
         TraitStruct memory traits = tokenTraits[tokenId];
+
+        if (traits.oneOfOne) {
+            return string(
+                abi.encodePacked(
+                    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 90 90" shape-rendering="crispEdges" width="512" height="512">',
+                    '<style>',
+                    'svg {',
+                        'width: 100%;',
+                        'height: 100%;',
+                        'margin: 0;',
+                        'padding: 0;',
+                        'overflow: hidden;',
+                        'display: flex;',
+                        'justify-content: center;',
+                        'background:', frogsBackdrop.getBackdropData(traits.backdrop), ';',
+                    '}',
+                    '</style>',
+                    '<rect width="90" height="90" fill="', frogsBackdrop.getBackdropData(traits.backdrop), '"/>',
+                    _getSVGTraitData(frogsOneOfOne.getOneOfOneData(traits.oneOfOneIndex)),
+                    '</svg>'
+                )
+            );
+        }
+
         return string(
             abi.encodePacked(
                 '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 90 90" shape-rendering="crispEdges" width="512" height="512">',
@@ -263,6 +325,23 @@ contract HyperFrogs is ERC721A, AccessControl, ReentrancyGuard {
 
     function _getFrogTraits(uint tokenId) internal view returns (string memory) {
         TraitStruct memory traits = tokenTraits[tokenId];
+
+        // If this token is a one-of-one, return only its one-of-one trait.
+        if (traits.oneOfOne) {
+            string memory traitName = frogsOneOfOne.getOneOfOneTrait(traits.oneOfOneIndex);
+            return string(
+                abi.encodePacked(
+                    '{"trait_type":"Backdrop", "value":"', frogsBackdrop.getBackdropTrait(traits.backdrop), '"},',
+                    '{"trait_type":"Hat", "value":"', traitName, '"},',
+                    '{"trait_type":"Eyes", "value":"', traitName, '"},',
+                    '{"trait_type":"Mouth", "value":"', traitName, '"},',
+                    '{"trait_type":"Body", "value":"', traitName, '"},',
+                    '{"trait_type":"Feet", "value":"', traitName, '"}'
+                )
+            );
+        }
+
+        // Otherwise, return the standard traits.
         string memory eyesTrait = traits.eyesIsA
             ? frogsEyesA.getEyesATrait(traits.eyesIndex)
             : frogsEyesB.getEyesBTrait(traits.eyesIndex);

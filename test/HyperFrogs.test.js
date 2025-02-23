@@ -14,6 +14,7 @@ describe("HyperFrogs Contract", () => {
   let frogsMouth;
   let frogsFeet;
   let frogsBackdrop;
+  let frogsOneOfOne;
 
   beforeEach(async () => {
     [deployer, addr1, addr2] = await ethers.getSigners();
@@ -47,6 +48,10 @@ describe("HyperFrogs Contract", () => {
     frogsBackdrop = await FrogsBackdrop.deploy();
     await frogsBackdrop.waitForDeployment();
 
+    const FrogsOneOfOne = await ethers.getContractFactory("FrogsOneOfOne");
+    frogsOneOfOne = await FrogsOneOfOne.deploy();
+    await frogsOneOfOne.waitForDeployment();
+
     // Optionally, check that each trait contract has a valid address.
     expect(frogsBody.target).to.properAddress;
     expect(frogsHats.target).to.properAddress;
@@ -55,6 +60,7 @@ describe("HyperFrogs Contract", () => {
     expect(frogsMouth.target).to.properAddress;
     expect(frogsFeet.target).to.properAddress;
     expect(frogsBackdrop.target).to.properAddress;
+    expect(frogsOneOfOne.target).to.properAddress;
 
     // Deploy HyperFrogs with the addresses of the trait contracts.
     HyperFrogs = await ethers.getContractFactory("HyperFrogs");
@@ -65,7 +71,8 @@ describe("HyperFrogs Contract", () => {
       frogsEyesB.target,
       frogsMouth.target,
       frogsFeet.target,
-      frogsBackdrop.target
+      frogsBackdrop.target,
+      frogsOneOfOne.target
     );
     await hyperFrogs.waitForDeployment();
   });
@@ -74,7 +81,9 @@ describe("HyperFrogs Contract", () => {
     expect(await hyperFrogs.maxSupply()).to.equal(2222);
     expect(await hyperFrogs.mintPrice()).to.equal(ethers.parseEther("1.0"));
     expect(await hyperFrogs.maxMintPerTrans()).to.equal(5);
-    expect(await hyperFrogs.maxMintPerWallet()).to.equal(10);
+    expect(await hyperFrogs.maxMintPerWallet()).to.equal(5);
+    expect(await hyperFrogs.maxOneOfOne()).to.equal(2);
+    expect(await hyperFrogs.mintedOneOfOne()).to.equal(0);
   });
 
   it("Should revert mint if minting is not enabled", async () => {
@@ -119,25 +128,58 @@ describe("HyperFrogs Contract", () => {
     expect(tokenUri).to.include("data:application/json;base64,");
   });
 
-  it("Should return a valid SVG for a minted token", async () => {
-    // Enable minting and mint a token.
-    await hyperFrogs.toggleMinting();
-    await hyperFrogs.connect(addr1).mint(1, { value: ethers.parseEther("1.0") });
+  it("Should output previews for one oneOfOne token and one normal token from the batch", async () => {
+    const batchSize = 100;
+    await hyperFrogs.devMint(batchSize);
+  
+    let oneOfOneTokenId = 0;
+    let normalTokenId = 0;
     
-    // Retrieve the SVG.
-    const svg = await hyperFrogs.buildSVG(1);
+    // Iterate over minted tokens (IDs assumed to start at 1)
+    for (let tokenId = 1; tokenId <= batchSize; tokenId++) {
+      const traits = await hyperFrogs.tokenTraits(tokenId);
+      if (traits.oneOfOne && oneOfOneTokenId === 0) {
+        oneOfOneTokenId = tokenId;
+      }
+      if (!traits.oneOfOne && normalTokenId === 0) {
+        normalTokenId = tokenId;
+      }
+      if (oneOfOneTokenId !== 0 && normalTokenId !== 0) break;
+    }
     
-    // Check that it contains typical SVG tags.
-    expect(svg).to.be.a('string');
-    expect(svg).to.include("<svg");
-    expect(svg).to.include("</svg>");
-
-    // Log the SVG to the console.
-    console.log("SVG for token 1:", svg);
-
-    // Optionally, write the SVG to a file so you can view it in a browser.
     const fs = require("node:fs");
-    fs.writeFileSync("token1.svg", svg);
+  
+    if (oneOfOneTokenId !== 0) {
+      const svgOne = await hyperFrogs.buildSVG(oneOfOneTokenId);
+      const tokenUriOne = await hyperFrogs.tokenURI(oneOfOneTokenId);
+      const base64JSONOne = tokenUriOne.split("base64,")[1];
+      const metadataJsonOne = Buffer.from(base64JSONOne, "base64").toString("ascii");
+      
+      fs.writeFileSync("./test/previews/preview-1of1.svg", svgOne);
+      fs.writeFileSync("./test/previews/metadata-1of1.json", metadataJsonOne);
+    } else {
+      console.log("No one-of-one token minted in this batch. Increase batch size or adjust probability for testing.");
+    }
+    
+    if (normalTokenId !== 0) {
+      const svgNormal = await hyperFrogs.buildSVG(normalTokenId);
+      const tokenUriNormal = await hyperFrogs.tokenURI(normalTokenId);
+      const base64JSONNormal = tokenUriNormal.split("base64,")[1];
+      const metadataJsonNormal = Buffer.from(base64JSONNormal, "base64").toString("ascii");
+      
+      fs.writeFileSync("./test/previews/preview-normal.svg", svgNormal);
+      fs.writeFileSync("./test/previews/metadata-normal.json", metadataJsonNormal);
+    } else {
+      console.log("No normal token found in this batch.");
+    }
+  
+    // Basic sanity assertions.
+    if (normalTokenId !== 0) {
+      expect((await hyperFrogs.buildSVG(normalTokenId))).to.include("<svg");
+    }
+    if (oneOfOneTokenId !== 0) {
+      expect((await hyperFrogs.buildSVG(oneOfOneTokenId))).to.include("<svg");
+    }
   });
 
   it("Should output a horizontal table of trait distributions using console.table", async () => {
