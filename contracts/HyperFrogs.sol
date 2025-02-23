@@ -50,11 +50,12 @@ contract HyperFrogs is ERC721A, AccessControl, ReentrancyGuard {
     /// One-of-one settings
     uint public constant maxOneOfOne = 2;
     uint public mintedOneOfOne = 0;
-    uint public oneOfOneProbability = 10;
 
     /// Whitelist Settings
+    mapping(address => bool) public freeList;
+    mapping(address => bool) public whitelist;
     mapping(address => uint) public mintAmount;
-    mapping(address => bool) public whiteListed;
+    uint public whitelistEndTime;
 
     /// Trait structure (note: eyes now uses a combined selection from EyesA and EyesB)
     struct TraitStruct {
@@ -123,6 +124,13 @@ contract HyperFrogs is ERC721A, AccessControl, ReentrancyGuard {
     // Standard minting function using custom errors.
     function mint(uint256 quantity) external payable {
         if (!mintEnabled) revert MintNotActive();
+
+        // During the whitelist phase, only addresses in paidWhitelist can mint.
+        // Assume that if whitelistEndTime is set (non-zero) and current time is before it, the paid whitelist applies.
+        if (whitelistEndTime != 0 && block.timestamp < whitelistEndTime) {
+            if (!whitelist[msg.sender]) revert NotOnWhitelist();
+        }
+        
         if (quantity > maxMintPerTrans) revert ExceedsMaxPerTx();
         if (msg.value != quantity * mintPrice) revert IncorrectEthSent();
 
@@ -134,11 +142,11 @@ contract HyperFrogs is ERC721A, AccessControl, ReentrancyGuard {
     }
 
     function free_mint() external {
-        if (!whiteListed[msg.sender]) revert NotOnWhitelist();
+        if (!freeList[msg.sender]) revert NotOnWhitelist();
         if (!freeMintEnabled) revert FreeMintNotActive();
         if (freeCount + 1 > maxFree) revert NoMoreFreeFrogs();
 
-        whiteListed[msg.sender] = false;
+        freeList[msg.sender] = false;
         freeCount++;
         _internalMint(1);
     }
@@ -375,9 +383,19 @@ contract HyperFrogs is ERC721A, AccessControl, ReentrancyGuard {
         _internalMint(_quantity);
     }
 
-    function addToWhiteList(address[] calldata addresses) external onlyRole(CONTROLLER_ROLE) nonReentrant {
+    function setWhitelistDuration(uint _whitelistDuration) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        whitelistEndTime = block.timestamp + _whitelistDuration;
+    }
+
+    function addToWhitelist(address[] calldata addresses) external onlyRole(CONTROLLER_ROLE) nonReentrant {
         for (uint i = 0; i < addresses.length; i++) {
-            whiteListed[addresses[i]] = true;
+            whitelist[addresses[i]] = true;
+        }
+    }
+
+    function addToFreeList(address[] calldata addresses) external onlyRole(CONTROLLER_ROLE) nonReentrant {
+        for (uint i = 0; i < addresses.length; i++) {
+            freeList[addresses[i]] = true;
         }
     }
 

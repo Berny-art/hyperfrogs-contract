@@ -86,6 +86,22 @@ describe("HyperFrogs Contract", () => {
     expect(await hyperFrogs.mintedOneOfOne()).to.equal(0);
   });
 
+  it("Should set the whitelist mint time to be 6 hours from block time", async () => {
+    // Define 6 hours in seconds.
+    const sixHours = 6 * 60 * 60; // 21600 seconds
+  
+    const tx = await hyperFrogs.setWhitelistDuration(sixHours);
+    const receipt = await tx.wait();
+  
+    const block = await ethers.provider.getBlock(receipt.blockNumber);
+    const expectedWhitelistEndTime = block.timestamp + sixHours;
+  
+    const actualWhitelistEndTime = await hyperFrogs.whitelistEndTime();
+    
+    // Assert that the whitelistEndTime is equal to the expected value.
+    expect(actualWhitelistEndTime).to.equal(expectedWhitelistEndTime);
+  });
+
   it("Should revert mint if minting is not enabled", async () => {
     await expect(
       hyperFrogs.connect(addr1).mint(1, { value: ethers.parseEther("1.0") })
@@ -106,15 +122,53 @@ describe("HyperFrogs Contract", () => {
     ).to.be.revertedWithCustomError(hyperFrogs, "IncorrectEthSent")
   });
 
-  it("Should allow free minting for whitelisted addresses", async () => {
-    // Grant free mint rights by whitelisting addr1.
+  it("Should allow free minting for freelisted addresses", async () => {
+    // Grant free mint rights by freelisting addr1.
     // Note: the function is protected by CONTROLLER_ROLE. Since deployer has that role, we call it from deployer.
-    await hyperFrogs.addToWhiteList([addr1.address]);
+    await hyperFrogs.addToFreeList([addr1.address]);
     // Enable free minting.
     await hyperFrogs.toggleFreeMinting();
     await hyperFrogs.connect(addr1).free_mint();
     expect(await hyperFrogs.totalSupply()).to.equal(1);
   });
+
+  it("Should allow whitelisted addresses to mint during whitelist phase and block non-whitelisted addresses", async () => {
+    const [deployer, addr1, addr2] = await ethers.getSigners();
+  
+    // Set the whitelist duration to 6 hours (21600 seconds)
+    const sixHours = 6 * 60 * 60;
+    await hyperFrogs.setWhitelistDuration(sixHours);
+  
+    // Add addr1 to the whitelist
+    await hyperFrogs.addToWhitelist([addr1.address]);
+  
+    // Enable minting
+    await hyperFrogs.toggleMinting();
+  
+    // addr1 should be able to mint during the whitelist phase
+    await expect(
+      hyperFrogs.connect(addr1).mint(1, { value: ethers.parseEther("1.0") })
+    ).to.not.be.reverted;
+  
+    expect(await hyperFrogs.totalSupply()).to.equal(1);
+  
+    // addr2 (not on whitelist) should NOT be able to mint during whitelist phase
+    await expect(
+      hyperFrogs.connect(addr2).mint(1, { value: ethers.parseEther("1.0") })
+    ).to.be.revertedWithCustomError(hyperFrogs, "NotOnWhitelist");
+  
+    // Fast-forward time to after the whitelist phase ends
+    await ethers.provider.send("evm_increaseTime", [sixHours + 1]);
+    await ethers.provider.send("evm_mine");
+  
+    // Now addr2 (non-whitelisted) should be able to mint in the public phase
+    await expect(
+      hyperFrogs.connect(addr2).mint(1, { value: ethers.parseEther("1.0") })
+    ).to.not.be.reverted;
+  
+    expect(await hyperFrogs.totalSupply()).to.equal(2);
+  });
+  
 
   it("Should revert free mint if caller is not whitelisted", async () => {
     await hyperFrogs.toggleFreeMinting();
