@@ -1,38 +1,42 @@
-Hyper Frogs Contract
-Hyper Frogs is an on-chain NFT project that dynamically generates SVG images entirely on-chain by assembling multiple trait contracts. The contract utilizes advanced Solidity techniques such as weighted random trait selection, on-chain SVG generation, and role-based access control with OpenZeppelin's AccessControl.
+# Hyper Frogs Contract
 
-Features
-On-Chain SVG Generation:
-Assemble SVG images using various trait contracts (Body, Hats, Eyes, Mouth, Feet, Backdrop) entirely on-chain. Traits are combined dynamically based on random seeds and weighted probabilities.
+Hyper Frogs is an on-chain NFT project that dynamically generates SVG images entirely on-chain by assembling multiple trait contracts. The main contract handles minting, SVG generation, and rarity distribution, while separate trait contracts provide the art layers.
 
-Trait Management:
+> **Important:**  
+> The art layers contained in the `traits/` folder are **proprietary**. They are for use only within the Hyper Frogs project. **No one may reuse, copy, distribute, or sell these art layers** in any form without explicit written permission from the author.
 
-Supports multiple variants per trait.
-Merges two separate eyes contracts (FrogsEyesA and FrogsEyesB) into a single selection process.
-Probabilities are used to determine trait rarity.
-Role-Based Access Control:
-Utilizes OpenZeppelin's AccessControl so that the deployer is automatically assigned the DEFAULT_ADMIN_ROLE and CONTROLLER_ROLE. Admins can toggle minting, set mint prices, and manage whitelists.
+## Features
 
-Minting & Free Minting:
-Standard minting functions are available along with a free mint option for whitelisted addresses.
+- **On-Chain SVG Generation:**  
+  Assemble dynamic SVG images entirely on-chain using multiple trait contracts (Body, Hats, Eyes, Mouth, Feet, Backdrop).
 
-Rarity Distribution Simulation:
-A suite of tests simulates multiple mints and outputs a formatted, horizontal table (using console.table) to help visualize the rarity distribution of each trait.
+- **Trait Management:**  
+  - Supports multiple variants per trait.  
+  - Merges two separate Eyes contracts (FrogsEyesA and FrogsEyesB) into a single selection process using weighted random probabilities.
 
-Installation
-Make sure you have Node.js installed. Then clone the repository and install dependencies:
+- **Role-Based Access Control:**  
+  Uses OpenZeppelin’s AccessControl. The deployer is assigned the `DEFAULT_ADMIN_ROLE` and `CONTROLLER_ROLE`, enabling management of minting, whitelists, and other administrative tasks.
 
-bash
-Kopiëren
+- **Minting & Free Minting:**  
+  Standard minting is supported along with a free mint option for whitelisted addresses.
+
+- **Rarity Distribution Simulation:**  
+  Tests simulate a batch mint and output formatted tables in the CLI to display the overall rarity distribution of each trait.
+
+## Installation
+
+Ensure you have [Node.js](https://nodejs.org/) installed. Then, clone the repository and install dependencies:
+
+```bash
 git clone https://github.com/yourusername/hyper-frogs.git
 cd hyper-frogs
 npm install
-Usage
-Hardhat Tasks
-This project uses Hardhat for development and testing. Some useful commands are:
+```
 
-bash
-Kopiëren
+## Usage
+This project uses Hardhat for development and testing. Here are some useful commands:
+
+```bash
 # Display Hardhat help
 npx hardhat help
 
@@ -47,30 +51,21 @@ npx hardhat node
 
 # Deploy using Hardhat Ignition (if configured)
 npx hardhat ignition deploy ./ignition/modules/Lock.js
-Deployment
-Configure your network settings in hardhat.config.js, then deploy the Hyper Frogs contract with:
+```
 
-bash
-Kopiëren
+## Deployment
+Configure your network settings in hardhat.config.js and deploy the contract:
+
+```bash
 npx hardhat run scripts/deploy.js --network <network_name>
-Testing Trait Distribution
-A special test simulates minting (e.g., 100 tokens) and aggregates the rarity of each trait. It then outputs a formatted horizontal table in the CLI showing trait names, counts, and percentages—useful for verifying your rarity setup.
+```
 
-Project Structure
-contracts/
-Contains Solidity source code for the HyperFrogs contract and all associated trait contracts (FrogsBody, FrogsHats, FrogsEyesA, FrogsEyesB, FrogsMouth, FrogsFeet, FrogsBackdrop).
+## Rarity Distribution Simulation
+A test script simulates minting (e.g., 100 tokens) and aggregates the occurrence of each trait. It outputs a horizontal table (using console.table) showing each trait's name, count, and percentage. This helps verify that your rarity distributions match your intended design.
 
-test/
-Hardhat test files covering functionality including minting, SVG generation, and rarity simulation.
+## Contributing
+Contributions are welcome for improving the core functionality and tests. However, please note that the art layers in the traits/ folder are proprietary and cannot be modified or redistributed without permission.
 
-scripts/
-Deployment scripts for the contracts.
-
-ignition/
-Hardhat Ignition modules for deployment (if using the Ignition plugin).
-
-Contributing
-Contributions are welcome! If you have ideas for improvements or bug fixes, please open an issue or submit a pull request.
-
-License
-This project is licensed under the MIT License.
+## License
+Main Contract: Licensed under the MIT License.
+Traits (Art Layers): Proprietary. The art layers are not to be reused, copied, or sold without explicit written permission.
