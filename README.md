@@ -57,7 +57,17 @@ npx hardhat ignition deploy ./ignition/modules/Lock.js
 Configure your network settings in hardhat.config.js and deploy the contract:
 
 ```bash
-npx hardhat run scripts/deploy.js --network <network_name>
+npx hardhat deploy --network <network_name>
+```
+
+## Tasks
+
+```bash
+npx hardhat batch-add-whitelist --contract <Your_HyperFrogs_Contract_Address> --network <network_name>
+
+npx hardhat withdraw-funds --contract 0xYourDeployedHyperFrogsAddress --network <network_name>
+
+npx hardhat enable-minting --contract 0xYourDeployedHyperFrogsAddress --network <network_name>
 ```
 
 ## Rarity Distribution Simulation

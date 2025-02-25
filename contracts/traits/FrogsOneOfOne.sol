@@ -11,7 +11,7 @@ contract FrogsOneOfOne {
 
     string[] internal OneOfOne_traits = [
         "Tadpole",
-        "The Mass"
+        "Frogspawn"
     ];
 
     // Getter functions

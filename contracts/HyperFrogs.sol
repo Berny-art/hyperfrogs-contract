@@ -6,6 +6,7 @@ import "../@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "../@openzeppelin/contracts/utils/Strings.sol";
 import "../@openzeppelin/contracts/utils/Base64.sol";
 import "../erc721a/contracts/ERC721A.sol";
+import "../@openzeppelin/contracts/token/common/ERC2981.sol";
 
 // Trait contracts
 import "./traits/FrogsBody.sol";
@@ -17,7 +18,7 @@ import "./traits/FrogsFeet.sol";
 import "./traits/FrogsBackdrop.sol";
 import "./traits/FrogsOneOfOne.sol";
 
-contract HyperFrogs is ERC721A, AccessControl, ReentrancyGuard {
+contract HyperFrogs is ERC721A, AccessControl, ReentrancyGuard, ERC2981 {
     using Strings for uint256;
 
     // Roles
@@ -44,8 +45,8 @@ contract HyperFrogs is ERC721A, AccessControl, ReentrancyGuard {
     bool public freeMintEnabled = false;
 
     /// Mint Rules
-    uint public maxMintPerTrans = 5;
-    uint public maxMintPerWallet = 5;
+    uint public maxMintPerTrans = 3;
+    uint public maxMintPerWallet = 3;
     uint public maxMintOnWhitelist = 2;
 
     /// One-of-one settings
@@ -103,9 +104,10 @@ contract HyperFrogs is ERC721A, AccessControl, ReentrancyGuard {
         frogsFeet = FrogsFeet(_feet);
         frogsBackdrop = FrogsBackdrop(_backdrop);
         frogsOneOfOne = FrogsOneOfOne(_oneOfOne);
+        _setDefaultRoyalty(msg.sender, 222);
     }
 
-    function supportsInterface(bytes4 interfaceId) public view virtual override(ERC721A, AccessControl) returns (bool) {
+    function supportsInterface(bytes4 interfaceId) public view virtual override(ERC721A, AccessControl, ERC2981) returns (bool) {
         return super.supportsInterface(interfaceId);
     }
 
@@ -419,5 +421,9 @@ contract HyperFrogs is ERC721A, AccessControl, ReentrancyGuard {
 
     function setMaxMintPerWallet(uint _max) external onlyRole(DEFAULT_ADMIN_ROLE) {
         maxMintPerWallet = _max;
+    }
+
+    function setDefaultRoyalty(address receiver, uint96 feeNumerator) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _setDefaultRoyalty(receiver, feeNumerator);
     }
 }
